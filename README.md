@@ -24,9 +24,9 @@ A comprehensive, fast, and reliable network scanning tool for discovering live h
 
 1. **Download the script**:
    ```bash
-   wget https://raw.githubusercontent.com/your-repo/ping_sweep_tool.py
+   wget https://github.com/1Birdo/NetSweeper/blob/main/main.py
    # or
-   curl -O https://raw.githubusercontent.com/your-repo/ping_sweep_tool.py
+   curl -O https://github.com/1Birdo/NetSweeper/blob/main/main.py
    ```
 
 2. **Make it executable** (Linux/macOS):
@@ -36,7 +36,7 @@ A comprehensive, fast, and reliable network scanning tool for discovering live h
 
 3. **Verify installation**:
    ```bash
-   python3 ping_sweep_tool.py --version
+   python3 main.py --version
    ```
 
 ## 🎯 Usage
@@ -45,34 +45,34 @@ A comprehensive, fast, and reliable network scanning tool for discovering live h
 
 ```bash
 # Scan local network (auto-detected)
-python3 ping_sweep_tool.py
+python3 main.py
 
 # Scan specific network
-python3 ping_sweep_tool.py 192.168.1.0/24
+python3 main.py 192.168.1.0/24
 
 # Ping sweep only (no port scanning)
-python3 ping_sweep_tool.py -P 192.168.1.0/24
+python3 main.py -P 192.168.1.0/24
 ```
 
 ### Advanced Usage
 
 ```bash
 # Scan with custom ports
-python3 ping_sweep_tool.py 192.168.1.0/24 -p "22,80,443,3389"
+python3 main.py 192.168.1.0/24 -p "22,80,443,3389"
 
 # Scan port ranges
-python3 ping_sweep_tool.py 192.168.1.0/24 -p "20-25,80-90,443"
+python3 main.py 192.168.1.0/24 -p "20-25,80-90,443"
 
 # Use predefined port sets
-python3 ping_sweep_tool.py 192.168.1.0/24 -p common      # Common ports
-python3 ping_sweep_tool.py 192.168.1.0/24 -p top100     # Top 100 ports
-python3 ping_sweep_tool.py 192.168.1.0/24 -p all        # All ports (1-65535)
+python3 main.py 192.168.1.0/24 -p common      # Common ports
+python3 main.py 192.168.1.0/24 -p top100     # Top 100 ports
+python3 main.py 192.168.1.0/24 -p all        # All ports (1-65535)
 
 # Save results to file
-python3 ping_sweep_tool.py 192.168.1.0/24 -o scan_results.txt
+python3 main.py 192.168.1.0/24 -o scan_results.txt
 
 # Quiet mode with custom thread count
-python3 ping_sweep_tool.py 192.168.1.0/24 -q -t 50
+python3 main.py 192.168.1.0/24 -q -t 50
 ```
 
 ## 📖 Command Line Options
@@ -178,10 +178,10 @@ Open Ports:
 2. **Port Selection**: Use targeted port scanning for faster results
    ```bash
    # Quick web service scan
-   python3 ping_sweep_tool.py 192.168.1.0/24 -p "80,443,8080,8443"
+   python3 main.py 192.168.1.0/24 -p "80,443,8080,8443"
    
    # Common administrative ports
-   python3 ping_sweep_tool.py 192.168.1.0/24 -p "22,23,3389,5900"
+   python3 main.py 192.168.1.0/24 -p "22,23,3389,5900"
    ```
 
 3. **Network Size**: Consider network size when setting expectations
@@ -222,19 +222,19 @@ The tool generates network traffic that may be detected by:
 **Permission Errors**:
 ```bash
 # Run with appropriate privileges
-sudo python3 ping_sweep_tool.py 192.168.1.0/24
+sudo python3 main.py 192.168.1.0/24
 ```
 
 **Network Detection Issues**:
 ```bash
 # Manually specify network if auto-detection fails
-python3 ping_sweep_tool.py 192.168.1.0/24
+python3 main.py 192.168.1.0/24
 ```
 
 **Slow Performance**:
 ```bash
 # Reduce thread count if experiencing timeouts
-python3 ping_sweep_tool.py 192.168.1.0/24 -t 25
+python3 main.py 192.168.1.0/24 -t 25
 ```
 
 **Firewall Blocking**:
@@ -257,30 +257,30 @@ python3 ping_sweep_tool.py 192.168.1.0/24 -t 25
 
 ```bash
 # Discover all devices on home network
-python3 ping_sweep_tool.py 192.168.1.0/24 -o home_network_audit.txt
+python3 main.py 192.168.1.0/24 -o home_network_audit.txt
 
 # Check for common vulnerable services
-python3 ping_sweep_tool.py 192.168.1.0/24 -p "21,22,23,80,135,139,445,3389"
+python3 main.py 192.168.1.0/24 -p "21,22,23,80,135,139,445,3389"
 ```
 
 ### Server Infrastructure Check
 
 ```bash
 # Quick server health check
-python3 ping_sweep_tool.py 10.0.1.0/24 -p "22,80,443,3306,5432" -q
+python3 main.py 10.0.1.0/24 -p "22,80,443,3306,5432" -q
 
 # Comprehensive server audit
-python3 ping_sweep_tool.py 10.0.1.0/24 -p top100 -o server_audit.txt
+python3 main.py 10.0.1.0/24 -p top100 -o server_audit.txt
 ```
 
 ### IoT Device Discovery
 
 ```bash
 # Find IoT devices with web interfaces
-python3 ping_sweep_tool.py 192.168.1.0/24 -p "80,443,8080,8443,9000"
+python3 main.py 192.168.1.0/24 -p "80,443,8080,8443,9000"
 
 # Look for common IoT ports
-python3 ping_sweep_tool.py 192.168.1.0/24 -p "80,443,554,8080,8554,10554"
+python3 main.py 192.168.1.0/24 -p "80,443,554,8080,8554,10554"
 ```
 
 ## 📝 Contributing
@@ -300,7 +300,7 @@ git clone https://github.com/your-repo/network-scanner.git
 cd network-scanner
 
 # Test the tool
-python3 ping_sweep_tool.py --help
+python3 main.py --help
 ```
 
 ## 📜 License
