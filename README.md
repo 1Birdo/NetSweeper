@@ -31,7 +31,7 @@ A comprehensive, fast, and reliable network scanning tool for discovering live h
 
 2. **Make it executable** (Linux/macOS):
    ```bash
-   chmod +x ping_sweep_tool.py
+   chmod +x main.py
    ```
 
 3. **Verify installation**:
@@ -296,7 +296,7 @@ We welcome contributions! Here's how you can help:
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-repo/network-scanner.git
+git clone https://github.com/1Birdo/NetSweeper.git
 cd network-scanner
 
 # Test the tool
