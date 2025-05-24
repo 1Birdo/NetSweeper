@@ -315,11 +315,10 @@ This tool is provided for educational and authorized testing purposes only. User
 
 - **Issues**: Report bugs and request features on GitHub
 - **Documentation**: Check this README and inline help (`--help`)
-- **Community**: Join discussions in the project's issue tracker
 
 ## 📈 Version History
 
-- **v1.0.0**: Initial release with core functionality
+- **v1.3.2**: Initial release with core functionality
   - Multi-threaded ping sweep
   - Port scanning with service detection
   - Basic OS detection
