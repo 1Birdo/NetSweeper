@@ -19,20 +19,6 @@ A professional-grade ARP network scanner for Windows environments. This tool dis
 - Python 3.6 or higher
 - Administrator privileges (for ARP cache clearing)
 
-## 🛠️ Installation
-
-1. **Clone or download** the script
-2. **No additional packages required** - uses only Python standard library
-3. **Run from Command Prompt** (Admin recommended)
-
-```bash
-# Download the script
-git clone <repository-url>
-cd arp-scanner
-
-# Or simply download arp_scanner.py
-```
-
 ## 🎯 Quick Start
 
 ### Basic Usage
@@ -259,5 +245,3 @@ For issues or questions:
 4. Verify network connectivity and range settings
 
 ---
-
-**Made for professional network administration and security auditing.**
