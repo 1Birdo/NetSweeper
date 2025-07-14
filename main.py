@@ -1,382 +1,305 @@
 #!/usr/bin/env python3
 """
-Local Network Scanner - A comprehensive network scanning tool for local networks
-
-Features:
-- Ping sweep to discover live hosts
-- Port scanning with service detection
-- Custom port ranges and common port sets
-- OS detection (basic)
-- Output formatting options
-- Fast threaded implementation
+Enhanced ARP Network Scanner - Simple and reliable tool for Windows to scan local network
+Author: Enhanced for workplace use
+Usage: python arp_scanner.py [options]
 """
 
 import os
-import platform
-import subprocess
-import threading
-import socket
 import sys
-import time
+import subprocess
+import re
 import ipaddress
 import argparse
-from queue import Queue
+import json
+import time
 from datetime import datetime
 
-# Version
-VERSION = "1.0.0"
-
-# Configuration
-MAX_THREADS = 100
-PING_TIMEOUT = 1  # seconds
-PORT_SCAN_TIMEOUT = 0.3  # seconds
-
-# Common port sets
-COMMON_PORTS = {
-    21: "FTP", 22: "SSH", 23: "TELNET", 25: "SMTP", 53: "DNS",
-    80: "HTTP", 110: "POP3", 139: "NetBIOS", 143: "IMAP", 443: "HTTPS",
-    445: "SMB", 3306: "MySQL", 3389: "RDP", 5900: "VNC", 8080: "HTTP-Alt"
-}
-
-TOP_PORTS_100 = [
-    21, 22, 23, 25, 53, 80, 110, 111, 135, 139, 143, 443, 445,
-    993, 995, 1723, 3306, 3389, 5900, 8080, 8443,
-    # ... (add more up to 100)
-]
-
-class NetworkScanner:
+class ARPScanner:
     def __init__(self):
-        self.live_hosts = Queue()
-        self.scan_results = {}
-        self.lock = threading.Lock()
-        self.scan_start_time = None
-        self.scan_end_time = None
-        self.running = True
-
-    def ping_host(self, ip):
-        """Ping a host to check if it's alive."""
-        if not self.running:
-            return False
-
+        self.results = {}
+        self.verbose = True
+        
+    def ping_ip(self, ip):
+        """Send a single ping to trigger ARP entry"""
         try:
-            param = "-n" if platform.system().lower() == "windows" else "-c"
-            command = ["ping", param, "1", "-w", str(PING_TIMEOUT * 1000), ip]
-            result = subprocess.run(
-                command, 
-                stdout=subprocess.PIPE, 
-                stderr=subprocess.PIPE,
-                creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0
+            subprocess.run(
+                ["ping", "-n", "1", "-w", "500", str(ip)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                creationflags=subprocess.CREATE_NO_WINDOW
             )
-            
-            if result.returncode == 0:
-                with self.lock:
-                    self.live_hosts.put(ip)
-                    return True
         except Exception:
             pass
-        return False
-
-    def scan_port(self, ip, port, timeout=PORT_SCAN_TIMEOUT):
-        """Scan a specific port on a host."""
-        if not self.running:
-            return None
-
+    
+    def get_arp_table(self):
+        """Get current ARP table from Windows"""
         try:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.settimeout(timeout)
-                result = s.connect_ex((ip, port))
-                if result == 0:
-                    service = COMMON_PORTS.get(port, "unknown")
-                    return port, service
-        except Exception:
-            pass
-        return None
-
-    def detect_os(self, ip):
-        """Basic OS detection based on TTL and open ports."""
-        try:
-            param = "-n" if platform.system().lower() == "windows" else "-c"
-            command = ["ping", param, "1", ip]
             result = subprocess.run(
-                command, 
-                stdout=subprocess.PIPE, 
+                ["arp", "-a"],
+                stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0
+                creationflags=subprocess.CREATE_NO_WINDOW
             )
-            
             if result.returncode == 0:
-                output = result.stdout.lower()
-                if "ttl=" in output:
-                    ttl = int(output.split("ttl=")[1].split()[0])
-                    if ttl <= 64:
-                        return "Linux/Unix"
-                    elif ttl <= 128:
-                        return "Windows"
-                    else:
-                        return "Router/Other"
+                return result.stdout
         except Exception:
             pass
+        return ""
+    
+    def parse_arp_entries(self, arp_output):
+        """Parse ARP table output and extract IP/MAC pairs"""
+        entries = {}
         
-        open_ports = self.scan_results.get(ip, {}).get('open_ports', [])
-        if 3389 in [p[0] for p in open_ports]:
-            return "Windows"
-        elif 22 in [p[0] for p in open_ports]:
-            return "Linux/Unix"
-        return "Unknown"
-
-    def scan_services(self, ip, ports):
-        """Scan multiple ports on a host."""
-        open_ports = []
-        for port in ports:
-            if not self.running:
-                break
-            result = self.scan_port(ip, port)
-            if result:
-                open_ports.append(result)
+        # Regex to match IP and MAC address lines
+        pattern = r'^\s*([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})\s+([0-9a-f]{2}-[0-9a-f]{2}-[0-9a-f]{2}-[0-9a-f]{2}-[0-9a-f]{2}-[0-9a-f]{2})\s+\w+\s*$'
         
-        if open_ports:
-            with self.lock:
-                self.scan_results[ip] = {
-                    'open_ports': open_ports,
-                    'os': self.detect_os(ip)
-                }
-
-    def ping_sweep(self, network, progress_callback=None):
-        """Perform a ping sweep on a network range."""
-        self.scan_start_time = datetime.now()
-        total_hosts = network.num_addresses - 2  # Exclude network and broadcast
+        for line in arp_output.splitlines():
+            match = re.match(pattern, line, re.IGNORECASE)
+            if match:
+                ip, mac = match.groups()
+                # Skip broadcast and multicast addresses
+                if mac.lower() not in ['ff-ff-ff-ff-ff-ff', '01-00-5e-00-00-16']:
+                    entries[ip] = mac.upper()
         
-        threads = []
-        scanned_hosts = 0
+        return entries
+    
+    def scan_network(self, network_cidr):
+        """Scan network range using ARP ping"""
+        try:
+            network = ipaddress.IPv4Network(network_cidr, strict=False)
+        except ValueError as e:
+            print(f"Error: Invalid network format '{network_cidr}'. Use CIDR notation like 192.168.1.0/24")
+            return {}
         
+        print(f"\n[*] Scanning network: {network}")
+        print(f"[*] Total IPs to scan: {network.num_addresses - 2}")  # Exclude network and broadcast
+        print("[*] Sending ARP requests...")
+        
+        # Get initial ARP table
+        initial_arp = self.get_arp_table()
+        initial_entries = self.parse_arp_entries(initial_arp)
+        
+        # Ping all IPs in the network
+        count = 0
         for ip in network.hosts():
-            if not self.running:
-                break
-                
-            while threading.active_count() > MAX_THREADS:
-                time.sleep(0.1)
-                if not self.running:
-                    break
-            
-            t = threading.Thread(target=self.ping_host, args=(str(ip),))
-            t.start()
-            threads.append(t)
-            scanned_hosts += 1
-            
-            if progress_callback and scanned_hosts % 10 == 0:
-                progress = (scanned_hosts / total_hosts) * 100
-                progress_callback(progress)
+            count += 1
+            if self.verbose and count % 50 == 0:
+                print(f"[*] Processed {count}/{network.num_addresses - 2} IPs...")
+            self.ping_ip(ip)
         
-        for t in threads:
-            t.join()
-
-    def service_scan(self, ports, progress_callback=None):
-        """Scan services on all live hosts."""
-        total_hosts = self.live_hosts.qsize()
-        scanned_hosts = 0
+        # Wait a moment for ARP table to update
+        time.sleep(2)
         
-        threads = []
-        while not self.live_hosts.empty() and self.running:
-            ip = self.live_hosts.get()
-            
-            while threading.active_count() > MAX_THREADS and self.running:
-                time.sleep(0.1)
-            
-            t = threading.Thread(target=self.scan_services, args=(ip, ports))
-            t.start()
-            threads.append(t)
-            scanned_hosts += 1
-            
-            if progress_callback and scanned_hosts % 1 == 0:
-                progress = (scanned_hosts / total_hosts) * 100
-                progress_callback(progress)
+        # Get updated ARP table
+        final_arp = self.get_arp_table()
+        final_entries = self.parse_arp_entries(final_arp)
         
-        for t in threads:
-            t.join()
+        # Store results
+        self.results = final_entries
         
-        self.scan_end_time = datetime.now()
-
-    def stop_scan(self):
-        """Stop the ongoing scan."""
-        self.running = False
-
-def get_local_network():
-    """Attempt to determine the local network automatically."""
-    try:
-        hostname = socket.gethostname()
-        local_ip = socket.gethostbyname(hostname)
-        network_addr = ".".join(local_ip.split(".")[:3]) + ".0/24"
-        return ipaddress.IPv4Network(network_addr, strict=False)
-    except Exception:
-        return None
-
-def print_progress(progress):
-    """Callback function to print progress."""
-    sys.stdout.write(f"\rProgress: {progress:.1f}%")
-    sys.stdout.flush()
-
-def parse_ports(port_spec):
-    """Parse port specification string into list of ports."""
-    ports = set()
-    
-    # Handle special cases
-    if port_spec.lower() == "all":
-        return list(range(1, 65536))
-    elif port_spec.lower() == "common":
-        return list(COMMON_PORTS.keys())
-    elif port_spec.lower() == "top100":
-        return TOP_PORTS_100
-    
-    # Handle ranges and individual ports
-    parts = port_spec.split(",")
-    for part in parts:
-        part = part.strip()
-        if "-" in part:
-            start, end = map(int, part.split("-"))
-            ports.update(range(start, end + 1))
+        # Display results
+        if final_entries:
+            print(f"\n[+] Found {len(final_entries)} active devices:")
+            print("-" * 60)
+            print(f"{'IP Address':<15} {'MAC Address':<18} {'Status'}")
+            print("-" * 60)
+            
+            for ip in sorted(final_entries.keys(), key=lambda x: ipaddress.IPv4Address(x)):
+                mac = final_entries[ip]
+                status = "NEW" if ip not in initial_entries else "EXISTING"
+                print(f"{ip:<15} {mac:<18} {status}")
         else:
-            ports.add(int(part))
+            print("\n[!] No devices found. Try running as Administrator or check network connectivity.")
+        
+        return final_entries
     
-    return sorted(ports)
+    def save_results(self, filename, format_type="txt"):
+        """Save results to file in specified format"""
+        if not self.results:
+            print("[!] No results to save.")
+            return
+        
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        if format_type.lower() == "json":
+            filename = filename if filename.endswith('.json') else f"{filename}.json"
+            data = {
+                "scan_time": timestamp,
+                "total_devices": len(self.results),
+                "devices": self.results
+            }
+            
+            try:
+                with open(filename, 'w') as f:
+                    json.dump(data, f, indent=2)
+                print(f"[+] Results saved to {filename}")
+            except Exception as e:
+                print(f"[!] Error saving JSON file: {e}")
+        
+        elif format_type.lower() == "txt":
+            filename = filename if filename.endswith('.txt') else f"{filename}.txt"
+            
+            try:
+                with open(filename, 'w') as f:
+                    f.write(f"ARP Network Scan Results\n")
+                    f.write(f"Scan Time: {timestamp}\n")
+                    f.write(f"Total Devices: {len(self.results)}\n")
+                    f.write("-" * 40 + "\n")
+                    
+                    for ip in sorted(self.results.keys(), key=lambda x: ipaddress.IPv4Address(x)):
+                        f.write(f"{ip}:{self.results[ip]}\n")
+                
+                print(f"[+] Results saved to {filename}")
+            except Exception as e:
+                print(f"[!] Error saving TXT file: {e}")
+
+def get_default_network():
+    """Try to detect the default network interface"""
+    try:
+        # Get default gateway
+        result = subprocess.run(
+            ["route", "print", "0.0.0.0"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            creationflags=subprocess.CREATE_NO_WINDOW
+        )
+        
+        for line in result.stdout.splitlines():
+            if "0.0.0.0" in line and "On-link" not in line:
+                parts = line.split()
+                if len(parts) >= 3:
+                    gateway = parts[2]
+                    # Convert to network address
+                    network_parts = gateway.split(".")
+                    if len(network_parts) == 4:
+                        network = f"{network_parts[0]}.{network_parts[1]}.{network_parts[2]}.0/24"
+                        return network
+    except Exception:
+        pass
+    
+    return None
+
+def clear_arp_cache():
+    """Clear the ARP cache"""
+    try:
+        result = subprocess.run(
+            ["arp", "-d"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            creationflags=subprocess.CREATE_NO_WINDOW
+        )
+        if result.returncode == 0:
+            print("[+] ARP cache cleared successfully")
+            return True
+        else:
+            print("[!] Failed to clear ARP cache. Run as Administrator.")
+            return False
+    except Exception as e:
+        print(f"[!] Error clearing ARP cache: {e}")
+        return False
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Local Network Scanner - A comprehensive network scanning tool",
+        description="Enhanced ARP Network Scanner for Windows",
         formatter_class=argparse.RawTextHelpFormatter
     )
+    
     parser.add_argument(
-        "network",
-        nargs="?",
-        help="Network to scan in CIDR notation (e.g., 192.168.1.0/24)\n"
-             "If not specified, will try to detect local network."
+        "-n", "--network",
+        help="Network to scan in CIDR notation (e.g., 192.168.1.0/24)"
     )
+    
     parser.add_argument(
-        "-p", "--ports",
-        default="common",
-        help="Ports to scan. Can be:\n"
-             " - 'all' for all ports (1-65535)\n"
-             " - 'common' for common ports (default)\n"
-             " - 'top100' for top 100 ports\n"
-             " - Specific ports/ranges (e.g., '22,80,443' or '20-25,80-90')"
-    )
-    parser.add_argument(
-        "-P", "--ping-only",
+        "-c", "--clear",
         action="store_true",
-        help="Only perform ping sweep, don't scan ports"
+        help="Clear ARP cache before scanning (requires Admin privileges)"
     )
+    
     parser.add_argument(
         "-o", "--output",
-        help="Save results to file"
+        help="Output filename (without extension)"
     )
+    
+    parser.add_argument(
+        "-f", "--format",
+        choices=["txt", "json", "both"],
+        default="txt",
+        help="Output format: txt, json, or both (default: txt)"
+    )
+    
     parser.add_argument(
         "-q", "--quiet",
         action="store_true",
-        help="Quiet mode, minimal output"
-    )
-    parser.add_argument(
-        "-t", "--threads",
-        type=int,
-        default=MAX_THREADS,
-        help=f"Maximum threads to use (default: {MAX_THREADS})"
-    )
-    parser.add_argument(
-        "-v", "--version",
-        action="version",
-        version=f"Local Network Scanner v{VERSION}"
+        help="Quiet mode - minimal output"
     )
     
     args = parser.parse_args()
     
     if not args.quiet:
-        print(f"\nLocal Network Scanner v{VERSION}")
+        print("\n" + "=" * 50)
+        print("    Enhanced ARP Network Scanner")
         print("=" * 50)
     
+    scanner = ARPScanner()
+    scanner.verbose = not args.quiet
+    
+    # Clear ARP cache if requested
+    if args.clear:
+        clear_arp_cache()
+        time.sleep(1)
+    
     # Determine network to scan
-    if args.network:
-        try:
-            network = ipaddress.IPv4Network(args.network, strict=False)
-        except ValueError:
-            print("Error: Invalid network format. Please use CIDR notation (e.g., 192.168.1.0/24)")
-            sys.exit(1)
-    else:
-        network = get_local_network()
+    network = args.network
+    if not network:
+        detected_network = get_default_network()
+        if detected_network:
+            if args.quiet:
+                network = detected_network
+            else:
+                response = input(f"Detected network: {detected_network}. Use this? [Y/n]: ").strip().lower()
+                if response in ['', 'y', 'yes']:
+                    network = detected_network
+        
         if not network:
-            print("Error: Could not detect local network. Please specify manually.")
-            sys.exit(1)
-        if not args.quiet:
-            print(f"[*] Using detected network: {network}")
+            while True:
+                network = input("Enter network in CIDR notation (e.g., 192.168.1.0/24): ").strip()
+                try:
+                    ipaddress.IPv4Network(network, strict=False)
+                    break
+                except ValueError:
+                    print("Invalid network format. Please try again.")
     
-    # Parse ports
-    try:
-        ports = parse_ports(args.ports)
-    except ValueError:
-        print("Error: Invalid port specification")
-        sys.exit(1)
+    # Run the scan
+    results = scanner.scan_network(network)
     
-    scanner = NetworkScanner()
-    global MAX_THREADS
-    MAX_THREADS = args.threads
+    # Save results if requested
+    if args.output and results:
+        if args.format in ["txt", "both"]:
+            scanner.save_results(args.output, "txt")
+        if args.format in ["json", "both"]:
+            scanner.save_results(args.output, "json")
     
-    try:
-        # Perform ping sweep
-        if not args.quiet:
-            print(f"\n[*] Starting ping sweep on {network} (Threads: {MAX_THREADS})")
-            print(f"[*] Scanning {network.num_addresses - 2} hosts...")
-            scanner.ping_sweep(network, progress_callback=None if args.quiet else print_progress)
-            
-            live_count = scanner.live_hosts.qsize()
-            print(f"\n[*] Found {live_count} live hosts")
-        
-        # Perform service scan if requested and hosts found
-        if not args.ping_only and live_count > 0:
-            if not args.quiet:
-                print(f"\n[*] Starting service scan on {live_count} hosts (Ports: {args.ports})")
-                scanner.service_scan(ports, progress_callback=None if args.quiet else print_progress)
-            
-            if not args.quiet:
-                print("\n\nScan Results:")
-                print("=" * 50)
-                
-                for ip, data in scanner.scan_results.items():
-                    print(f"\nHost: {ip}")
-                    print(f"OS: {data['os']}")
-                    print("Open Ports:")
-                    for port, service in sorted(data['open_ports'], key=lambda x: x[0]):
-                        print(f"  - Port {port}: {service}")
-                
-                print("\n" + "=" * 50)
-                scan_duration = scanner.scan_end_time - scanner.scan_start_time
-                print(f"Scan completed in {scan_duration.total_seconds():.2f} seconds")
-        
-        # Save results to file if requested
-        if args.output:
-            with open(args.output, "w") as f:
-                f.write(f"Network Scan Results for {network}\n")
-                f.write(f"Scan performed at {scanner.scan_start_time}\n\n")
-                
-                if args.ping_only:
-                    f.write("Live Hosts:\n")
-                    while not scanner.live_hosts.empty():
-                        f.write(f"- {scanner.live_hosts.get()}\n")
-                else:
-                    for ip, data in scanner.scan_results.items():
-                        f.write(f"\nHost: {ip}\n")
-                        f.write(f"OS: {data['os']}\n")
-                        f.write("Open Ports:\n")
-                        for port, service in sorted(data['open_ports'], key=lambda x: x[0]):
-                            f.write(f"  - Port {port}: {service}\n")
-            
-            if not args.quiet:
-                print(f"\n[*] Results saved to {args.output}")
+    # Ask for rescan
+    if not args.quiet and results:
+        while True:
+            response = input("\nWould you like to rescan? [y/N]: ").strip().lower()
+            if response in ['y', 'yes']:
+                print("\nRescanning...")
+                scanner.scan_network(network)
+                if args.output:
+                    if args.format in ["txt", "both"]:
+                        scanner.save_results(f"{args.output}_rescan", "txt")
+                    if args.format in ["json", "both"]:
+                        scanner.save_results(f"{args.output}_rescan", "json")
+            else:
+                break
     
-    except KeyboardInterrupt:
-        scanner.stop_scan()
-        print("\n[!] Scan interrupted by user.")
-        sys.exit(0)
-    except Exception as e:
-        print(f"\n[!] Error: {e}")
-        sys.exit(1)
+    if not args.quiet:
+        print("\n[*] Scan complete!")
 
 if __name__ == "__main__":
     main()
