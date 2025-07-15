@@ -14,6 +14,7 @@ import ipaddress
 import argparse
 import json
 import time
+import signal
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -23,9 +24,19 @@ class ARPScanner:
         self.verbose = True
         self.initial_entries = {}
         self.current_network = None
+        self.shutdown_flag = False
+        signal.signal(signal.SIGINT, self.signal_handler)
+        
+    def signal_handler(self, signum, frame):
+        """Handle interrupt signals gracefully"""
+        self.shutdown_flag = True
+        if self.verbose:
+            print("\n[!] Shutdown signal received. Cleaning up...")
         
     def ping_ip(self, ip):
         """Send a single ping to trigger ARP entry"""
+        if self.shutdown_flag:
+            return
         try:
             subprocess.run(
                 ["ping", "-n", "1", "-w", "500", str(ip)],
@@ -38,6 +49,8 @@ class ARPScanner:
     
     def get_arp_table(self):
         """Get current ARP table from Windows"""
+        if self.shutdown_flag:
+            return ""
         try:
             result = subprocess.run(
                 ["arp", "-a"],
@@ -54,12 +67,17 @@ class ARPScanner:
     
     def parse_arp_entries(self, arp_output):
         """Parse ARP table output and extract IP/MAC pairs"""
+        if self.shutdown_flag:
+            return {}
+            
         entries = {}
         
         # Regex to match IP and MAC address lines
         pattern = r'^\s*([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})\s+([0-9a-f]{2}-[0-9a-f]{2}-[0-9a-f]{2}-[0-9a-f]{2}-[0-9a-f]{2}-[0-9a-f]{2})\s+\w+\s*$'
         
         for line in arp_output.splitlines():
+            if self.shutdown_flag:
+                break
             match = re.match(pattern, line, re.IGNORECASE)
             if match:
                 ip, mac = match.groups()
@@ -71,6 +89,9 @@ class ARPScanner:
     
     def get_mac_vendor(self, mac):
         """Lookup MAC address vendor using OUI database"""
+        if self.shutdown_flag:
+            return "Unknown"
+            
         try:
             # Remove any non-hex characters and take first 6 chars (OUI)
             oui = re.sub(r'[^a-f0-9]', '', mac.lower())[:6]
@@ -80,6 +101,8 @@ class ARPScanner:
             if os.path.exists(oui_file):
                 with open(oui_file, 'r') as f:
                     for line in f:
+                        if self.shutdown_flag:
+                            break
                         if oui in line.lower():
                             return line.strip().split('\t')[-1]
             
@@ -97,6 +120,9 @@ class ARPScanner:
     
     def resolve_hostname(self, ip):
         """Attempt to resolve hostname for IP"""
+        if self.shutdown_flag:
+            return ""
+            
         try:
             result = subprocess.run(
                 ["nslookup", str(ip)],
@@ -108,6 +134,8 @@ class ARPScanner:
             )
             if result.returncode == 0:
                 for line in result.stdout.splitlines():
+                    if self.shutdown_flag:
+                        break
                     if "Name:" in line:
                         return line.split("Name:")[1].strip()
         except:
@@ -139,9 +167,18 @@ class ARPScanner:
                 completed = 0
                 total = len(futures)
                 for future in as_completed(futures):
+                    if self.shutdown_flag:
+                        executor.shutdown(wait=False)
+                        print("\n[!] Scan interrupted by user")
+                        return {}
+                        
                     completed += 1
                     if completed % 100 == 0:
                         print(f"[*] Processed {completed}/{total} IPs...")
+        
+        # Check for shutdown before proceeding
+        if self.shutdown_flag:
+            return {}
         
         # Wait a moment for ARP table to update
         time.sleep(2)
@@ -160,6 +197,9 @@ class ARPScanner:
     
     def display_results(self, entries):
         """Display results with additional information"""
+        if self.shutdown_flag:
+            return
+            
         if entries:
             print(f"\n[+] Found {len(entries)} active devices:")
             print("-" * 90)
@@ -167,6 +207,8 @@ class ARPScanner:
             print("-" * 90)
             
             for ip in sorted(entries.keys(), key=lambda x: ipaddress.IPv4Address(x)):
+                if self.shutdown_flag:
+                    break
                 mac = entries[ip]
                 vendor = self.get_mac_vendor(mac)
                 hostname = self.resolve_hostname(ip)
@@ -190,12 +232,15 @@ class ARPScanner:
         previous_devices = {}
         
         try:
-            while True:
+            while not self.shutdown_flag:
                 current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 print(f"\n=== Scan at {current_time} ===")
                 
                 # Run scan
                 current_devices = self.scan_network(network_cidr, threads)
+                
+                if self.shutdown_flag:
+                    break
                 
                 # Detect changes
                 new_devices = {ip: mac for ip, mac in current_devices.items() if ip not in previous_devices}
@@ -204,24 +249,35 @@ class ARPScanner:
                 if new_devices:
                     print("\n[+] New devices detected:")
                     for ip, mac in new_devices.items():
+                        if self.shutdown_flag:
+                            break
                         vendor = self.get_mac_vendor(mac)
                         hostname = self.resolve_hostname(ip)
                         print(f"  {ip} - {mac} - {vendor[:30]} - {hostname}")
                 
-                if gone_devices:
+                if gone_devices and not self.shutdown_flag:
                     print("\n[-] Devices no longer present:")
                     for ip, mac in gone_devices.items():
+                        if self.shutdown_flag:
+                            break
                         print(f"  {ip} - {mac}")
                 
                 previous_devices = current_devices
-                time.sleep(interval)
+                
+                if not self.shutdown_flag:
+                    # Countdown with interruptible sleep
+                    for _ in range(interval):
+                        if self.shutdown_flag:
+                            break
+                        time.sleep(1)
                 
         except KeyboardInterrupt:
+            self.shutdown_flag = True
             print("\n[*] Monitoring stopped by user")
     
     def save_results(self, filename, format_type="txt"):
         """Save results to file in specified format"""
-        if not self.results:
+        if self.shutdown_flag or not self.results:
             print("[!] No results to save.")
             return
         
@@ -237,6 +293,8 @@ class ARPScanner:
             }
             
             for ip, mac in self.results.items():
+                if self.shutdown_flag:
+                    break
                 data["devices"].append({
                     "ip_address": ip,
                     "mac_address": mac,
@@ -266,6 +324,8 @@ class ARPScanner:
                     f.write("-" * 90 + "\n")
                     
                     for ip in sorted(self.results.keys(), key=lambda x: ipaddress.IPv4Address(x)):
+                        if self.shutdown_flag:
+                            break
                         mac = self.results[ip]
                         vendor = self.get_mac_vendor(mac)
                         hostname = self.resolve_hostname(ip)
@@ -392,70 +452,78 @@ def main():
     
     args = parser.parse_args()
     
+    scanner = ARPScanner()
+    scanner.verbose = not args.quiet
+    
     if not args.quiet:
         print("\n" + "=" * 60)
         print("    Enhanced ARP Network Scanner - Advanced Version")
         print("=" * 60)
     
-    scanner = ARPScanner()
-    scanner.verbose = not args.quiet
-    
-    # Clear ARP cache if requested
-    if args.clear:
-        clear_arp_cache()
-        time.sleep(1)
-    
-    # Determine network to scan
-    network = args.network
-    if not network:
-        detected_network = get_default_network()
-        if detected_network:
-            if args.quiet:
-                network = detected_network
-            else:
-                response = input(f"Detected network: {detected_network}. Use this? [Y/n]: ").strip().lower()
-                if response in ['', 'y', 'yes']:
-                    network = detected_network
+    try:
+        # Clear ARP cache if requested
+        if args.clear:
+            clear_arp_cache()
+            time.sleep(1)
         
+        # Determine network to scan
+        network = args.network
         if not network:
-            while True:
-                network = input("Enter network in CIDR notation (e.g., 192.168.1.0/24): ").strip()
-                try:
-                    ipaddress.IPv4Network(network, strict=False)
-                    break
-                except ValueError:
-                    print("Invalid network format. Please try again.")
-    
-    # Run the scan or monitoring
-    if args.monitor:
-        scanner.continuous_monitor(network, args.interval, args.threads)
-    else:
-        results = scanner.scan_network(network, args.threads)
-        
-        # Save results if requested
-        if args.output and results:
-            if args.format in ["txt", "both"]:
-                scanner.save_results(args.output, "txt")
-            if args.format in ["json", "both"]:
-                scanner.save_results(args.output, "json")
-        
-        # Ask for rescan
-        if not args.quiet and results:
-            while True:
-                response = input("\nWould you like to rescan? [y/N]: ").strip().lower()
-                if response in ['y', 'yes']:
-                    print("\nRescanning...")
-                    scanner.scan_network(network, args.threads)
-                    if args.output:
-                        if args.format in ["txt", "both"]:
-                            scanner.save_results(f"{args.output}_rescan", "txt")
-                        if args.format in ["json", "both"]:
-                            scanner.save_results(f"{args.output}_rescan", "json")
+            detected_network = get_default_network()
+            if detected_network:
+                if args.quiet:
+                    network = detected_network
                 else:
-                    break
+                    response = input(f"Detected network: {detected_network}. Use this? [Y/n]: ").strip().lower()
+                    if response in ['', 'y', 'yes']:
+                        network = detected_network
+            
+            if not network:
+                while True:
+                    if scanner.shutdown_flag:
+                        return
+                    network = input("Enter network in CIDR notation (e.g., 192.168.1.0/24): ").strip()
+                    try:
+                        ipaddress.IPv4Network(network, strict=False)
+                        break
+                    except ValueError:
+                        print("Invalid network format. Please try again.")
+        
+        # Run the scan or monitoring
+        if args.monitor:
+            scanner.continuous_monitor(network, args.interval, args.threads)
+        else:
+            results = scanner.scan_network(network, args.threads)
+            
+            # Save results if requested
+            if args.output and results and not scanner.shutdown_flag:
+                if args.format in ["txt", "both"]:
+                    scanner.save_results(args.output, "txt")
+                if args.format in ["json", "both"]:
+                    scanner.save_results(args.output, "json")
+            
+            # Ask for rescan
+            if not args.quiet and results and not scanner.shutdown_flag:
+                while True:
+                    response = input("\nWould you like to rescan? [y/N]: ").strip().lower()
+                    if response in ['y', 'yes']:
+                        print("\nRescanning...")
+                        scanner.scan_network(network, args.threads)
+                        if args.output and not scanner.shutdown_flag:
+                            if args.format in ["txt", "both"]:
+                                scanner.save_results(f"{args.output}_rescan", "txt")
+                            if args.format in ["json", "both"]:
+                                scanner.save_results(f"{args.output}_rescan", "json")
+                    else:
+                        break
+        
+        if not args.quiet and not scanner.shutdown_flag:
+            print("\n[*] Scan complete!")
     
-    if not args.quiet:
-        print("\n[*] Scan complete!")
+    except KeyboardInterrupt:
+        scanner.shutdown_flag = True
+        if not args.quiet:
+            print("\n[!] Scan interrupted by user")
 
 if __name__ == "__main__":
     main()
