@@ -2,8 +2,6 @@
 
 A professional-grade ARP network scanner for Windows environments. This tool discovers all active devices on your local network by sending ARP requests and mapping IP addresses to MAC addresses.
 
-## 🚀 Features
-
 - **Zero Dependencies**: Works with fresh Python 3 installations
 - **Windows Optimized**: Native Windows command integration
 - **Professional Output**: Clean, formatted results with timestamps
@@ -13,15 +11,10 @@ A professional-grade ARP network scanner for Windows environments. This tool dis
 - **Admin Integration**: Works seamlessly with `arp -d` workflows
 - **Progress Tracking**: Real-time scan progress indicators
 
-## 📋 Requirements
-
 - Windows 10/11
 - Python 3.6 or higher
 - Administrator privileges (for ARP cache clearing)
 
-## 🎯 Quick Start
-
-### Basic Usage
 ```bash
 # Auto-detect network and scan
 python arp_scanner.py
@@ -29,8 +22,7 @@ python arp_scanner.py
 # Scan specific network
 python arp_scanner.py -n 192.168.1.0/24
 ```
-
-### Professional Workflow
+CMD
 ```bash
 # Step 1: Clear ARP cache (as Administrator)
 arp -d
@@ -38,10 +30,9 @@ arp -d
 # Step 2: Run comprehensive scan
 python arp_scanner.py -n 192.168.1.0/24 -o daily_scan -f both
 
-# Step 3: Review results and rescan if needed
 ```
 
-## 📖 Command Line Options
+ Command Line Options
 
 | Option | Description | Example |
 |--------|-------------|---------|
@@ -63,13 +54,6 @@ python arp_scanner.py -c -n 192.168.1.0/24 -o daily_audit -f both
 ```bash
 python arp_scanner.py
 ```
-*Auto-detects network and provides interactive scanning*
-
-### Automated Monitoring
-```bash
-python arp_scanner.py -q -n 192.168.1.0/24 -o automated_scan -f json
-```
-
 ### Multiple Subnet Scanning
 ```bash
 python arp_scanner.py -n 192.168.1.0/24 -o subnet1
@@ -126,11 +110,11 @@ Total Devices: 5
 
 ## 🔧 How It Works
 
-1. **Network Discovery**: Automatically detects your local network or uses specified CIDR
-2. **ARP Requests**: Sends ping to each IP in range to trigger ARP entries
-3. **Table Parsing**: Reads Windows ARP table (`arp -a`) and extracts IP:MAC pairs
-4. **Results Processing**: Filters and formats discovered devices
-5. **Output Generation**: Displays results and saves to specified formats
+ **Network Discovery**: Automatically detects your local network or uses specified CIDR
+ **ARP Requests**: Sends ping to each IP in range to trigger ARP entries
+ **Table Parsing**: Reads Windows ARP table (`arp -a`) and extracts IP:MAC pairs
+ **Results Processing**: Filters and formats discovered devices
+ **Output Generation**: Displays results and saves to specified formats
 
 ### Technical Details
 - Uses Windows native `ping` and `arp` commands
@@ -160,8 +144,6 @@ Total Devices: 5
 4. Review results and save for documentation
 5. Rescan if needed using the interactive prompt
 ```
-
-## 🚨 Troubleshooting
 
 ### Common Issues
 
@@ -197,34 +179,9 @@ Total Devices: 5
 172.16.0.0/20    # 172.16.0.1 to 172.16.15.254
 ```
 
-## 📝 Automation & Batch Files
-
-### Daily Monitoring Script
-Create `daily_scan.bat`:
-```batch
-@echo off
-echo ARP Network Scanner - Daily Monitoring
-echo =====================================
-echo.
-echo Clearing ARP cache...
-arp -d
-echo.
-echo Running network scan...
-python arp_scanner.py -n 192.168.1.0/24 -o daily_scan_%date:~-4,4%%date:~-10,2%%date:~-7,2% -f both
-echo.
-echo Scan complete! Check the generated files.
-pause
-```
-
-### Scheduled Task Integration
-```bash
-# For Windows Task Scheduler
-python.exe "C:\path\to\arp_scanner.py" -q -n 192.168.1.0/24 -o scheduled_scan -f json
-```
-
 ## 🤝 Contributing
 
-Feel free to submit issues, feature requests, or pull requests. This tool is designed for professional network administration and security auditing.
+Feel free to submit issues, feature requests, or pull requests. This tool is designed for network auditing.
 
 ## 📄 License
 
